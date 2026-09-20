@@ -158,8 +158,6 @@ test('integration: create ticket', () => {
 | Assert vào đâu | Giá trị trả về của hàm | Trạng thái file/DB sau khi chạy | stdout/stderr/exit code/file cuối cùng |
 | Góc nhìn code nội bộ | White-box (biết rõ) | Grey-box (biết một phần) | Black-box (không biết gì) |
 
-**Quy tắc ngón tay cái:** số lượng mock tỉ lệ nghịch với cấp độ test — Unit mock nhiều nhất, Integration mock ít (chỉ thứ ngoài tầm kiểm soát như API bên thứ 3), E2E gần như không mock gì. Nếu thấy file integration test toàn `jest.mock()` giống hệt file unit test bên cạnh — đó là dấu hiệu rõ ràng nhất của việc lẫn cấp độ.
-
 ---
 
 ## 4. Cần test gì trong một CLI Tool
@@ -425,13 +423,11 @@ describe("ticket CLI (e2e)", () => {
 
 AI có thể viết code "trông đúng" — cú pháp sạch, tên biến hợp lý — nhưng vẫn sai logic, thiếu edge case, hoặc dựa trên giả định sai. Vì không tự viết từng dòng, người dùng dễ bỏ sót lỗi nếu chỉ đọc bằng mắt. Test giải quyết vấn đề này theo các cách sau:
 
-- **Test là "hợp đồng khách quan":** viết test dựa trên yêu cầu thực tế (độc lập với code AI vừa viết). Nếu code AI sinh ra pass hết → có bằng chứng cụ thể, không phải "cảm thấy đúng".
+- **Kiểm chứng bằng Test:** viết test dựa trên yêu cầu thực tế (độc lập với code AI vừa viết). Nếu code AI sinh ra pass hết → có bằng chứng cụ thể, không phải "cảm thấy đúng".
 - **Bắt lỗi logic ẩn:** ví dụ AI quên xử lý title rỗng — test "should reject empty title" sẽ fail ngay, lộ ra lỗi mà đọc code có thể bỏ sót.
 - **Phát hiện hallucination:** AI có thể giả định sai cách một hàm/thư viện hoạt động — chạy test thật (không phải suy luận) sẽ báo lỗi ngay.
 - **Vòng lặp AI tự sửa:** đưa AI xem test đang fail giúp AI tự sửa chính xác hơn là mô tả lại bằng lời.
-- **Test là tài liệu sống:** sau nhiều vòng AI sửa code, test cho biết hành vi hiện tại thực sự là gì, không cần đọc lại toàn bộ code.
-
-**Minh hoạ:** giả sử AI viết `createTicket()` nhưng test chỉ có assertion yếu (`toBeTruthy()`) và thiếu case title rỗng. Sau khi review, phát hiện thiếu sót, và sửa lại (thêm assertion chặt + test title rỗng — xem mục 5), phiên bản mới bắt được đúng lỗi thiếu validation — chứng minh test đã "kiểm soát" chất lượng code AI sinh ra thay vì chỉ tin tưởng mù quáng.
+- **Đảm bảo tính ổn định:** sau nhiều vòng AI sửa code, test cho biết hành vi hiện tại thực sự là gì, không cần đọc lại toàn bộ code.
 
 ---
 
