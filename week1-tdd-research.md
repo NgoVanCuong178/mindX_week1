@@ -119,54 +119,12 @@ Chi tiết từng loại:
 - **Khi nào dùng:** Luồng người dùng quan trọng nhất (happy path + vài lỗi phổ biến)
 - **Dấu hiệu sai cấp độ:** Test luôn cả logic nội bộ chi tiết → nên đẩy xuống unit test cho nhanh
 
-### Cách nhận biết test bị "lẫn cấp độ"
-
-**Bộ câu hỏi tự kiểm tra nhanh** — trước/sau khi viết xong 1 test, tự hỏi:
-
-| Câu hỏi | Nếu trả lời... |
-|---|---|
-| Test này có chạm vào I/O thật không (file, DB, network, subprocess)? | Không chạm gì cả → chắc chắn là unit test, dù đặt tên file là `*.integration.test.js` |
-| Nếu xóa hết `jest.mock(...)` trong file, test còn chạy được không? | Không chạy được (vì mock đang giả toàn bộ dependency) → đây là unit test đội lốt integration |
-| Test có setup/teardown file thật, temp folder không? | Có → đúng chất integration. Không có gì để dọn dẹp sau test → nghi ngờ là unit |
-| Nếu dependency thật đổi (schema DB đổi, API đổi) mà test vẫn xanh — có phát hiện ra không? | Không phát hiện được → đó là unit test (mock không tự cập nhật theo thực tế) |
-
-**Triệu chứng cụ thể:**
-
-*Integration test nhưng mock hết như unit test* — mock cả `storage` lẫn `validate` thì không còn gì được "tích hợp" thật, thực chất là unit test đặt sai tên.
-```javascript
-jest.mock('../src/storage');
-jest.mock('../src/validate');
-test('integration: create ticket', () => {
-  storage.writeAll.mockReturnValue(true);
-});
-```
-
-*Unit test nhưng lại đụng file/DB thật* — logic validate không cần đọc file để test; làm vậy khiến unit test chậm, flaky, và khó biết lỗi do logic hay do file system.
-
-*E2E test nhưng "leo" vào kiểm tra chi tiết logic nội bộ* — E2E chỉ nên assert trên thứ user thấy được (stdout, exit code), không import module nội bộ để assert sâu.
-
-*Integration test cố cover mọi input/edge case như unit test* — lãng phí vì chạy chậm hơn 10-50 lần so với unit mà kết quả giống hệt; nên gom hết case validate thuần túy về unit, integration chỉ cần 1-2 case xác nhận validate được gọi đúng chỗ trong luồng thật.
-
-**Bảng "test signature" — nhận diện nhanh qua đặc điểm:**
-
-| Đặc điểm quan sát được | Unit | Integration | E2E |
-|---|---|---|---|
-| Thời gian chạy 1 test | < 10ms | 10ms – vài trăm ms | vài trăm ms – vài giây |
-| Có `beforeEach` tạo file/folder tạm không | Không | Có | Có |
-| Có gọi subprocess không | Không | Không | Có |
-| Số lượng `jest.mock()` | Nhiều, mock gần hết | Ít, chỉ mock thứ ở rìa (3rd-party) | Không mock gì |
-| Assert vào đâu | Giá trị trả về của hàm | Trạng thái file/DB sau khi chạy | stdout/stderr/exit code/file cuối cùng |
-| Góc nhìn code nội bộ | White-box (biết rõ) | Grey-box (biết một phần) | Black-box (không biết gì) |
-
----
 
 ## 4. Cần test gì trong một CLI Tool
 
 **a) Commands (các lệnh)**
-- Mỗi command chạy đúng hành vi mong đợi: `create`, `list`, `show`, `update`, `delete`
-- Đúng exit code (0 = thành công, khác 0 = lỗi) — quan trọng vì script/CI dựa vào exit code
-- Output đúng định dạng (stdout cho kết quả, stderr cho lỗi)
-- Đúng khi kết hợp các flags/options (`--json`, `--verbose`, `-h`...)
+- Chèn các ký tự đặc biệt của shell để xem có chạy được hay không
+- Mọi lệnh được thực thi đều chạy với mức quyền hệ thống cần thiết
 
 **b) Validation (xác thực đầu vào)**
 - Input hợp lệ được chấp nhận
@@ -176,9 +134,9 @@ test('integration: create ticket', () => {
 
 **c) File storage (lưu trữ file)**
 - Dữ liệu được ghi đúng xuống file sau khi create/update
-- Đọc lại đúng dữ liệu đã lưu (persistence — tắt mở lại app vẫn còn data)
+- Đọc lại đúng dữ liệu đã lưu (persistence — tắt mở lại app vẫn còn data) và được lưu trữ bên ngoài file gốc
 - Xử lý khi file chưa tồn tại (lần đầu chạy app)
-- Xử lý khi file bị corrupt (JSON lỗi cú pháp) — không được crash im lặng
+- Xử lý khi file bị corrupt (JSON lỗi cú pháp) — không được crash im lặng và giới hạn kích thước tệp
 
 **d) Errors (xử lý lỗi)**
 - Thông báo lỗi rõ ràng, hữu ích cho người dùng (không phải stack trace khó hiểu)
@@ -423,44 +381,10 @@ describe("ticket CLI (e2e)", () => {
 
 AI có thể viết code "trông đúng" — cú pháp sạch, tên biến hợp lý — nhưng vẫn sai logic, thiếu edge case, hoặc dựa trên giả định sai. Vì không tự viết từng dòng, người dùng dễ bỏ sót lỗi nếu chỉ đọc bằng mắt. Test giải quyết vấn đề này theo các cách sau:
 
-- **Kiểm chứng bằng Test:** viết test dựa trên yêu cầu thực tế (độc lập với code AI vừa viết). Nếu code AI sinh ra pass hết → có bằng chứng cụ thể, không phải "cảm thấy đúng".
-- **Bắt lỗi logic ẩn:** ví dụ AI quên xử lý title rỗng — test "should reject empty title" sẽ fail ngay, lộ ra lỗi mà đọc code có thể bỏ sót.
+- **Kiểm chứng bằng Test:** viết test dựa trên yêu cầu thực tế (độc lập với code AI vừa viết). Nếu code AI sinh ra pass hết → có bằng chứng cụ thể, không phải "cảm thấy đúng" (là thước đo khách quan nhất cho chất lượng code).
+- **Bắt lỗi logic ẩn:** ví dụ AI quên xử lý title rỗng — test "should reject empty title" sẽ fail ngay, lộ ra lỗi mà đọc code có thể bỏ sót. (bỏ qua các trường hợp ngoại lệ quan trọng)
 - **Phát hiện hallucination:** AI có thể giả định sai cách một hàm/thư viện hoạt động — chạy test thật (không phải suy luận) sẽ báo lỗi ngay.
-- **Vòng lặp AI tự sửa:** đưa AI xem test đang fail giúp AI tự sửa chính xác hơn là mô tả lại bằng lời.
-- **Đảm bảo tính ổn định:** sau nhiều vòng AI sửa code, test cho biết hành vi hiện tại thực sự là gì, không cần đọc lại toàn bộ code.
+- **AI tự sửa code:** Khi yêu cầu AI sửa code hoặc chỉnh sửa lại cấu trúc, các test đảm bảo được tính năng cũ vẫn hoạt động bình thường.
 
 ---
 
-## 7. Các lỗi thường gặp khi test và cách tránh
-
-**1) Over-testing (test quá nhiều/thừa)**
-
-Viết test cho những thứ không cần thiết: getter/setter đơn giản, code của thư viện bên thứ 3, hoặc lặp lại cùng 1 logic theo nhiều cách không thêm giá trị. Hậu quả: test suite chạy chậm, khó bảo trì. Cách tránh: tập trung vào hành vi quan trọng (business logic, edge case) thay vì cố đạt 100% coverage.
-
-**2) Weak assertions (assertion yếu)**
-
-```javascript
-// Sai — assertion yếu, pass dù kết quả sai
-expect(ticket).toBeTruthy();
-
-// Đúng — kiểm tra giá trị/cấu trúc cụ thể
-expect(ticket).toEqual({ id: expect.any(String), title: "Fix bug", status: "open" });
-```
-
-Assertion yếu khiến test "xanh" (pass) ngay cả khi kết quả sai — tạo cảm giác an toàn giả. Cách tránh: luôn kiểm tra giá trị/cấu trúc cụ thể, không chỉ kiểm tra "có tồn tại".
-
-**3) Testing implementation details (test chi tiết cài đặt nội bộ)**
-
-```javascript
-// Sai — test cách hàm thực hiện (internal), không phải kết quả
-expect(jsonStringifySpy).toHaveBeenCalledTimes(1);
-
-// Đúng — test kết quả quan sát được từ bên ngoài
-expect(readFileSync(path)).toContain('"title":"Fix bug"');
-```
-
-Test cách hàm thực hiện thay vì test kết quả của nó. Hậu quả: chỉ cần refactor (không đổi hành vi) là test fail hàng loạt dù code không có bug — làm mất tác dụng "lưới an toàn" khi refactor. Cách tránh: test qua public interface (input → output quan sát được).
-
-**4) Blindly trusting AI output (tin tưởng mù quáng vào AI)**
-
-Chấp nhận code/test do AI viết mà không đọc hiểu, không tự hỏi "edge case nào chưa xử lý?". Bao gồm cả việc tin tưởng test do AI viết — AI có thể viết test khớp với chính code sai của nó, khiến test vô nghĩa. Cách tránh: luôn đọc hiểu trước khi merge, tự kiểm tra test có phản ánh đúng yêu cầu nghiệp vụ không.
